@@ -1,0 +1,172 @@
+#-------------------------------------------------------------------------------------------#
+# Project: Coin Mixer (proof of concept)                                                    #    
+# Author : Dean Adler                                                                       #
+#                                                                                           #
+#       1. The following has been tested on Windows. Python's multiprocessing lib might     #
+#          may yield different results on Linux.                                            #
+#                                                                                           #
+#       2. Jobcoin is implemented as a (user, id) tuple.                                    #
+#                                                                                           #
+#       3. Deposit address is implemented as a (address1, address2, ...) tuple.             #
+#                                                                                           #
+#       4. House, address, user: each is an account in the accounts dictionary.             #
+#                                                                                           #
+#       5. The sweeper daemon polls all deposit addresses and sweeps any coins it finds     #
+#          into the house account.                                                          #
+#                                                                                           #
+#       6. Withdrawl needs work. The algorithm to withdraw only those coins not created     #
+#          by the user is inefficient.                                                      #
+#                                                                                           #
+#       7. A delay has not yet been implemented. One idea is to maintain a withdrawl        #
+#          job queue and have a daemon decrement the respective delay counters at 1-sec     #
+#          intervals, executing once a counter reaches zero.                                #
+#                                                                                           #
+#       8. The program runs an interactive session on the console, prompting for Python     #
+#          statements at each iteration. Just <return> with no statement will refresh       #
+#          the display, which is useful given the ansynchronous sweep.                      #
+#                                                                                           #
+#          >> user1 = User('user1')                                                         #
+#          >> user2 = User('user2')                                                         #
+#          >> user1.new_coins(100)                                                          #
+#          >> user2.new_coins(100)                                                          #
+#          >> depo1 = user1.new_deposit_account(['a', 'b', 'c'])                            #
+#          >> depo2 = user2.new_deposit_account(['d', 'e', 'f'])                            #
+#          >> user1.make_deposit(depo1, 10)                                                 #
+#          >> user2.make_deposit(depo2, 10)                                                 #
+#          >> user1.make_withdrawl(depo1)                                                   #
+#          >> user2.make_withdrawl(depo2)                                                   #
+#          >> print(env.accounts['a'])                                                      #
+#          >> print(env.accounts['f'])                                                      #
+#          >> quit                                                                          #
+#-------------------------------------------------------------------------------------------#
+
+import logging
+from   multiprocessing import Manager, Process, Lock
+from   time import sleep
+from   itertools import count
+
+logger = logging.getLogger(__name__)
+env    = None
+
+#-------------------------------------------------------------------------------------------#
+
+def sweeper(accounts, balances, depos, lock):
+    while True:
+        lock.acquire()
+
+        for name in depos.keys():
+            for _ in range(len(accounts[name])):
+                balances[name] += 1
+                accounts['HOUSE'].append(accounts[name].pop())
+
+        lock.release()
+        sleep(5)
+
+#-------------------------------------------------------------------------------------------#
+
+def locker(func):
+    def wrapper(*args, **kwargs):
+        env.lock.acquire()
+        val = func(*args, **kwargs)
+        env.lock.release()
+        return val
+    return wrapper
+
+#-------------------------------------------------------------------------------------------#
+
+class Env(object):
+    def __init__(self):
+        self.manager  = Manager()
+        self.lock     = Lock()
+        self.accounts = self.manager.dict()
+        self.balances = self.manager.dict()
+        self.depos    = self.manager.dict()
+        self.coin_id  = count()
+        self.add_acct('HOUSE')
+
+    def add_acct(self, name):
+        self.accounts[name] = self.manager.list()
+
+    def add_depo(self, name, user):
+        for i in name:
+            self.add_acct(i)
+
+        self.add_acct(name)
+        self.balances[name] = 0
+        self.depos   [name] = user
+
+    def mint_coin(self, name, amount=1):
+        for _ in range(amount):
+            self.accounts[name].append((name, next(self.coin_id)))
+
+#-------------------------------------------------------------------------------------------#
+
+class User(object):
+    @locker
+    def __init__(self, name):
+        self.name = name
+        env.add_acct(name)
+
+    @locker
+    def new_coins(self, amount):
+        env.mint_coin(self.name, amount)
+
+    @locker
+    def new_deposit_account(self, names):
+        dkey = tuple(sorted(names))
+        used = set(names).intersection(env.accounts)
+
+        if used:
+            if env.depos.get(dkey) == self.name:
+                return dkey
+            else:
+                logger.error('already in use: %s' % str(used))
+                return None
+
+        env.add_depo(dkey, self.name)
+        return dkey
+
+    @locker
+    def make_deposit(self, name, amount):
+        if name not in env.depos or env.depos[name] != self.name:
+            logger.error('unrecognized deposit account')
+        else:
+            for _ in range(min(amount, len(env.accounts[self.name]))):
+                env.accounts[name].append(env.accounts[self.name].pop())
+
+    @locker
+    def make_withdrawl(self, name):
+        if name not in env.depos or env.depos[name] != self.name:
+            logger.error('unrecognized deposit account')
+            return
+
+        for i in range(len(env.accounts['HOUSE']) - 1, -1, -1):
+            if env.accounts['HOUSE'][i][0] != self.name:
+                if not env.balances[name]:
+                    break
+                env.balances[name] -= 1
+                env.accounts[name[i % len(name)]].append(env.accounts['HOUSE'].pop(i))
+
+#-------------------------------------------------------------------------------------------#
+
+if __name__ == '__main__':
+    env = Env()
+    pid = Process(target=sweeper, args=(env.accounts, env.balances, env.depos, env.lock))
+    pid.start()
+
+    while True:
+        for i in env.accounts:
+            print('balance %s: %d' % (i, len(env.accounts[i])))
+       
+        s = input('\nenter statement: ')
+
+        if s == 'quit':
+            break
+
+        try:
+            s = exec(s)
+        except Exception as e:
+            print(e)
+
+    pid.kill()
+
