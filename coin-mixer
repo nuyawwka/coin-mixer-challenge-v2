@@ -17,13 +17,11 @@
 #       6. Withdrawl needs work. The algorithm to withdraw only those coins not created     #
 #          by the user is inefficient.                                                      #
 #                                                                                           #
-#       7. A delay has not yet been implemented. One idea is to maintain a withdrawl        #
-#          job queue and have a daemon decrement the respective delay counters at 1-sec     #
-#          intervals, executing once a counter reaches zero.                                #
+#       7. A delay has not yet been implemented.                                            #
 #                                                                                           #
 #       8. The program runs an interactive session on the console, prompting for Python     #
 #          statements at each iteration. Just <return> with no statement will refresh       #
-#          the display, which is useful given the ansynchronous sweep.                      #
+#          the display, which is useful given the asynchronous processing in the script.    #
 #                                                                                           #
 #          >> user1 = User('user1')                                                         #
 #          >> user2 = User('user2')                                                         #
@@ -33,8 +31,6 @@
 #          >> depo2 = user2.new_deposit_account(['d', 'e', 'f'])                            #
 #          >> user1.make_deposit(depo1, 10)                                                 #
 #          >> user2.make_deposit(depo2, 10)                                                 #
-#          >> user1.make_withdrawl(depo1)                                                   #
-#          >> user2.make_withdrawl(depo2)                                                   #
 #          >> print(env.accounts['a'])                                                      #
 #          >> print(env.accounts['f'])                                                      #
 #          >> quit                                                                          #
@@ -61,6 +57,23 @@ def sweeper(accounts, balances, depos, lock):
 
         lock.release()
         sleep(5)
+
+#-------------------------------------------------------------------------------------------#
+
+def withdrawler(accounts, balances, depos, lock):
+    while True:
+        lock.acquire()
+
+        for name, user in depos.items():
+            for i in range(len(accounts['HOUSE']) - 1, -1, -1):
+                if accounts['HOUSE'][i][0] != user:
+                    if not balances[name]:
+                        break
+                    balances[name] -= 1
+                    accounts[name[i % len(name)]].append(accounts['HOUSE'].pop(i))
+
+        lock.release()
+        sleep(3)
 
 #-------------------------------------------------------------------------------------------#
 
@@ -134,25 +147,14 @@ class User(object):
             for _ in range(min(amount, len(env.accounts[self.name]))):
                 env.accounts[name].append(env.accounts[self.name].pop())
 
-    @locker
-    def make_withdrawl(self, name):
-        if name not in env.depos or env.depos[name] != self.name:
-            logger.error('unrecognized deposit account')
-            return
-
-        for i in range(len(env.accounts['HOUSE']) - 1, -1, -1):
-            if env.accounts['HOUSE'][i][0] != self.name:
-                if not env.balances[name]:
-                    break
-                env.balances[name] -= 1
-                env.accounts[name[i % len(name)]].append(env.accounts['HOUSE'].pop(i))
-
 #-------------------------------------------------------------------------------------------#
 
 if __name__ == '__main__':
     env = Env()
-    pid = Process(target=sweeper, args=(env.accounts, env.balances, env.depos, env.lock))
-    pid.start()
+    p1  = Process(target=sweeper    , args=(env.accounts, env.balances, env.depos, env.lock))
+    p2  = Process(target=withdrawler, args=(env.accounts, env.balances, env.depos, env.lock))
+    p1.start()
+    p2.start()
 
     while True:
         for i in env.accounts:
@@ -168,5 +170,5 @@ if __name__ == '__main__':
         except Exception as e:
             print(e)
 
-    pid.kill()
-
+    p1.kill()
+    p2.kill()
