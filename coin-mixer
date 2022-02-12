@@ -163,13 +163,6 @@ if __name__ == '__main__':
     p1.start()
     p2.start()
 
-    user1 = User('user1')                                                         #
-    user2 = User('user2')                                                         #
-    user1.new_coins(100)                                                          #
-    user2.new_coins(100)                                                          #
-    depo1 = user1.new_deposit_account(['a', 'b', 'c'], delay=30)                  #
-    depo2 = user2.new_deposit_account(['d', 'e', 'f'])
-
     while True:
         for i in env.accounts:
             print('balance %s: %d' % (i, len(env.accounts[i])))
