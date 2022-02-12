@@ -17,9 +17,7 @@
 #       6. Withdrawl needs work. The algorithm to withdraw only those coins not created     #
 #          by the user is inefficient.                                                      #
 #                                                                                           #
-#       7. A delay has not yet been implemented.                                            #
-#                                                                                           #
-#       8. The program runs an interactive session on the console, prompting for Python     #
+#       7. The program runs an interactive session on the console, prompting for Python     #
 #          statements at each iteration. Just <return> with no statement will refresh       #
 #          the display, which is useful given the asynchronous processing in the script.    #
 #                                                                                           #
@@ -27,7 +25,7 @@
 #          >> user2 = User('user2')                                                         #
 #          >> user1.new_coins(100)                                                          #
 #          >> user2.new_coins(100)                                                          #
-#          >> depo1 = user1.new_deposit_account(['a', 'b', 'c'])                            #
+#          >> depo1 = user1.new_deposit_account(['a', 'b', 'c'], delay=30)                  #
 #          >> depo2 = user2.new_deposit_account(['d', 'e', 'f'])                            #
 #          >> user1.make_deposit(depo1, 10)                                                 #
 #          >> user2.make_deposit(depo2, 10)                                                 #
@@ -64,9 +62,16 @@ def withdrawler(accounts, balances, depos, lock):
     while True:
         lock.acquire()
 
-        for name, user in depos.items():
+        for name, info in depos.items():
+            if not balances[name]:
+                continue
+
+            if info['delay'] > 0:
+                info['delay'] -= 1
+                continue
+
             for i in range(len(accounts['HOUSE']) - 1, -1, -1):
-                if accounts['HOUSE'][i][0] != user:
+                if accounts['HOUSE'][i][0] != info['user']:
                     if not balances[name]:
                         break
                     balances[name] -= 1
@@ -94,19 +99,20 @@ class Env(object):
         self.accounts = self.manager.dict()
         self.balances = self.manager.dict()
         self.depos    = self.manager.dict()
+        self.delay    = self.manager.dict()
         self.coin_id  = count()
         self.add_acct('HOUSE')
 
     def add_acct(self, name):
         self.accounts[name] = self.manager.list()
 
-    def add_depo(self, name, user):
+    def add_depo(self, name, user, delay):
         for i in name:
             self.add_acct(i)
 
         self.add_acct(name)
         self.balances[name] = 0
-        self.depos   [name] = user
+        self.depos   [name] = self.manager.dict(user=user, delay=delay)
 
     def mint_coin(self, name, amount=1):
         for _ in range(amount):
@@ -125,23 +131,24 @@ class User(object):
         env.mint_coin(self.name, amount)
 
     @locker
-    def new_deposit_account(self, names):
+    def new_deposit_account(self, names, delay=0):
         dkey = tuple(sorted(names))
         used = set(names).intersection(env.accounts)
 
         if used:
-            if env.depos.get(dkey) == self.name:
+            if dkey in env.depos and env.depos[dkey]['user'] == self.name:
+                env.depos[dkey]['delay'] = delay
                 return dkey
             else:
                 logger.error('already in use: %s' % str(used))
                 return None
 
-        env.add_depo(dkey, self.name)
+        env.add_depo(dkey, self.name, delay)
         return dkey
 
     @locker
     def make_deposit(self, name, amount):
-        if name not in env.depos or env.depos[name] != self.name:
+        if name not in env.depos or env.depos[name]['user'] != self.name:
             logger.error('unrecognized deposit account')
         else:
             for _ in range(min(amount, len(env.accounts[self.name]))):
@@ -155,6 +162,13 @@ if __name__ == '__main__':
     p2  = Process(target=withdrawler, args=(env.accounts, env.balances, env.depos, env.lock))
     p1.start()
     p2.start()
+
+    user1 = User('user1')                                                         #
+    user2 = User('user2')                                                         #
+    user1.new_coins(100)                                                          #
+    user2.new_coins(100)                                                          #
+    depo1 = user1.new_deposit_account(['a', 'b', 'c'], delay=30)                  #
+    depo2 = user2.new_deposit_account(['d', 'e', 'f'])
 
     while True:
         for i in env.accounts:
