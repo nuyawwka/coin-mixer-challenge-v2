@@ -77,7 +77,7 @@ def sweeper(accounts, balances, deposits, lock):
 
 #-------------------------------------------------------------------------------------------#
 
-def withdrawler(accounts, balances, deposits, lock):
+def withdrawaler(accounts, balances, deposits, lock):
     while True:
         lock.acquire()
 
@@ -174,8 +174,8 @@ class User(object):
 
 if __name__ == '__main__':
     env = Env()
-    p1  = Process(target=sweeper    , args=(env.accounts, env.balances, env.deposits, env.lock))
-    p2  = Process(target=withdrawler, args=(env.accounts, env.balances, env.deposits, env.lock))
+    p1  = Process(target=sweeper     , args=(env.accounts, env.balances, env.deposits, env.lock))
+    p2  = Process(target=withdrawaler, args=(env.accounts, env.balances, env.deposits, env.lock))
     p1.start()
     p2.start()
 
