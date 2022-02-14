@@ -15,8 +15,9 @@
 #       5. The sweeper daemon polls all deposit addresses and sweeps any coins it finds     #
 #          into the house account.                                                          #
 #                                                                                           #
-#       6. For optimal mixing, the withdrawl process selects from the house those coins     #
-#          not originally issued to the withdrawer. This needs tuning.                      #
+#       6. For optimal mixing, the withdrawaler transfers from the house coins that         #
+#          were not originally issued to the user requesting the withdrawal. This needs     #
+#          tuning.                                                                          #
 #                                                                                           #
 #       7. The program runs an interactive session on the console, prompting for Python     #
 #          statements at each iteration. A <return> with no statement will refresh          #
