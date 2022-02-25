@@ -5,8 +5,7 @@
 #       1. The following has been tested on Windows. Python's multiprocessing lib might     #
 #          may yield different results on Linux.                                            #
 #                                                                                           #
-#       2. Jobcoin is implemented as a (id, events) tuple. The 1st element of events is     #
-#          genesis.                                                                         #
+#       2. Digital coin is implemented as a (id, events) tuple.                             #
 #                                                                                           #
 #       3. Deposit address is implemented as a (address1, address2, ...) tuple.             #
 #                                                                                           #
@@ -15,9 +14,9 @@
 #       5. The sweeper daemon polls all deposit addresses and sweeps any coins it finds     #
 #          into the house account.                                                          #
 #                                                                                           #
-#       6. For optimal mixing, the withdrawaler transfers from the house coins that         #
-#          were not originally issued to the user requesting the withdrawal. This needs     #
-#          tuning.                                                                          #
+#       6. For optimal mixing, the withdrawaler transfers from the house coins not          #
+#          originally issued to the requestor. For expedience, a brute force search was     #
+#          implemented. This obviously needs revisiting.                                    #
 #                                                                                           #
 #       7. The program runs an interactive session on the console, prompting for Python     #
 #          statements at each iteration. A <return> with no statement will refresh          #
@@ -67,9 +66,9 @@ def sweeper(accounts, balances, deposits, lock):
     while True:
         lock.acquire()
 
-        for name in deposits.keys():
-            for i, coin in accounts[name].items():
-                transfer(accounts, name, 'HOUSE', i)
+        for name in deposits.keys():                            # iterating over dict proxy #
+            for i, coin in accounts[name].items():              # requires keys method      # 
+                transfer(accounts, name, 'HOUSE', i)                 
                 balances[name] += 1
 
         lock.release()
