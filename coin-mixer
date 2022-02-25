@@ -3,7 +3,7 @@
 # Author : Dean Adler                                                                       #
 #                                                                                           #
 #       1. The following has been tested on Windows. Python's multiprocessing lib might     #
-#          may yield different results on Linux.                                            #
+#          yield different results on Linux.                                                #
 #                                                                                           #
 #       2. Digital coin is implemented as a (id, events) tuple.                             #
 #                                                                                           #
