@@ -54,9 +54,8 @@ def transfer(accounts, orig, dest, i):
 
 def locker(func):
     def wrapper(*args, **kwargs):
-        env.lock.acquire()
-        val = func(*args, **kwargs)
-        env.lock.release()
+        with env.lock:
+            val = func(*args, **kwargs)
         return val
     return wrapper
 
@@ -64,39 +63,34 @@ def locker(func):
 
 def sweeper(accounts, balances, deposits, lock):
     while True:
-        lock.acquire()
+        with lock:
+            for name in deposits.keys():                        # iterating over dict proxy #
+                for i, coin in accounts[name].items():          # requires keys method      # 
+                    transfer(accounts, name, 'HOUSE', i)                 
+                    balances[name] += 1
 
-        for name in deposits.keys():                            # iterating over dict proxy #
-            for i, coin in accounts[name].items():              # requires keys method      # 
-                transfer(accounts, name, 'HOUSE', i)                 
-                balances[name] += 1
-
-        lock.release()
         sleep(5)
 
 #-------------------------------------------------------------------------------------------#
 
 def withdrawaler(accounts, balances, deposits, lock):
     while True:
-        lock.acquire()
-
-        for name, info in deposits.items():
-            if not balances[name]:
-                continue
-
-            if info['delay'] > 0:
-                info['delay'] -= 1
-                continue
-
-            for i, coin in accounts['HOUSE'].items():
-                if coin[1][0][1] == info['user']:
-                    continue
+        with lock:
+            for name, info in deposits.items():
                 if not balances[name]:
-                    break
-                transfer(accounts, 'HOUSE', name[i % len(name)], i)
-                balances[name] -= 1
+                    continue
 
-        lock.release()
+                if info['delay'] > 0:
+                    info['delay'] -= 1
+                    continue
+
+                for i, coin in accounts['HOUSE'].items():
+                    if coin[1][0][1] == info['user']:
+                        continue
+                    if not balances[name]:
+                        break
+                    transfer(accounts, 'HOUSE', name[i % len(name)], i)
+                    balances[name] -= 1
         sleep(3)
 
 #-------------------------------------------------------------------------------------------#
